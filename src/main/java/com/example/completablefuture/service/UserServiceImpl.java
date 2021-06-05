@@ -2,7 +2,10 @@ package com.example.completablefuture.service;
 
 import com.example.completablefuture.dto.Comment;
 import com.example.completablefuture.dto.Post;
+import com.example.completablefuture.dto.Todo;
 import com.example.completablefuture.dto.UserInfo;
+import com.example.completablefuture.util.LoggerUtil;
+import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.List;
@@ -11,94 +14,127 @@ import java.util.concurrent.ExecutionException;
 
 import static com.example.completablefuture.util.CommonUtil.delay;
 
+@Service("userService")
 public class UserServiceImpl implements UserService {
 
-    private String API_LOCAL = "https://jsonplaceholder.typicode.com/";
+    private String API_LOCAL = "https://jsonplaceholder.typicode.com";
     private WebClient webClient = WebClient.create("https://jsonplaceholder.typicode.com/");
 
+    @Override
     public UserInfo getUserInfo(String userId) {
         String url = API_LOCAL.concat("/users/").concat(userId);
-        UserInfo userInfo = webClient
+        return getUserInfoFromApi(url);
+    }
+
+    private UserInfo getUserInfoFromApi(String url) {
+        LoggerUtil.log("Calling URL for UserInfo " + url);
+        delay(3000);
+        return webClient
                 .get()
                 .uri(url)
                 .retrieve()
                 .bodyToMono(UserInfo.class)
                 .block();
-        return userInfo;
     }
 
-    public List<Post> postByUserFromApi(String userId) {
+    @Override
+    public List<Post> postByUser(String userId) {
         String postUrl = API_LOCAL.concat("/posts/").concat(userId);
         List<Post> posts =
-                webClient
-                        .get()
-                        .uri(postUrl)
-                        .retrieve()
-                        .bodyToFlux(Post.class)
-                        .collectList()
-                        .block();
-        delay(5000);
+                postByUserFromApi(postUrl);
         return posts;
     }
 
-    public List<Comment> commentsByUserFromApi(String userId) {
-        String commentUrl = API_LOCAL.concat("/comments/").concat(userId);
-        List<Comment> result =
-                webClient
-                        .get()
-                        .uri(commentUrl)
-                        .retrieve().bodyToFlux(Comment.class)
-                        .collectList()
-                        .block();
-        delay(5000);
-        return result;
+    private List<Post> postByUserFromApi(String postUrl) {
+        LoggerUtil.log("Calling URL for User Posts " + postUrl);
+        delay(3000);
+        return webClient
+                .get()
+                .uri(postUrl)
+                .retrieve()
+                .bodyToFlux(Post.class)
+                .collectList()
+                .block();
     }
 
+    @Override
+    public List<Comment> commentsByUser(String userId) {
+        String commentUrl = API_LOCAL.concat("/comments/").concat(userId);
+        return CommentsOnPostFromApi(commentUrl);
+    }
+
+    @Override
     public List<Comment> commentsOnPost(String postId) {
         String commentUrl = API_LOCAL.concat("/posts/").concat(postId).concat("/comments");
-        List<Comment> result =
-                webClient
-                        .get()
-                        .uri(commentUrl)
-                        .retrieve()
-                        .bodyToFlux(Comment.class)
-                        .collectList()
-                        .block();
-        delay(5000);
-        return result;
+        LoggerUtil.log("calling URL : " + commentUrl);
+        return CommentsOnPostFromApi(commentUrl);
     }
 
+    private List<Comment> CommentsOnPostFromApi(String commentUrl) {
+        LoggerUtil.log("Calling URL for User Comments :: " + commentUrl);
+        delay(3000);
+        return webClient
+                .get()
+                .uri(commentUrl)
+                .retrieve()
+                .bodyToFlux(Comment.class)
+                .collectList()
+                .block();
+    }
+
+    @Override
     public UserInfo prepapreUserInfo(String userId) {
         UserInfo userInfo = getUserInfo(userId);
-        List<Post> postList = postByUserFromApi(userId);
-
+        List<Post> postList = postByUser(userId);
+        List<Todo> todoList =todosByUser(userId);
         postList.forEach(post -> {
             List<Comment> comments = commentsOnPost(post.getId());
             post.setComments(comments);
         });
         userInfo.setPosts(postList);
-
+        userInfo.setTodos(todoList);
         return userInfo;
-
     }
 
+    @Override
     public UserInfo prepareUserInfoUsingCompletableFuture(String userId) throws ExecutionException, InterruptedException {
 
-        UserInfo userInfo = CompletableFuture.supplyAsync(() -> getUserInfo(userId)).get();
-        List<Post> userPosts = CompletableFuture.supplyAsync(() -> postByUserFromApi(userId)).get();
+        CompletableFuture<UserInfo> userInfoCF = CompletableFuture.supplyAsync(() -> getUserInfo(userId));
+        CompletableFuture<List<Post>> userPostsCF = CompletableFuture.supplyAsync(() -> postByUser(userId));
+        CompletableFuture<List<Todo>> userTodosCF = CompletableFuture.supplyAsync(() -> todosByUser(userId));
 
-        userPosts.stream().forEach(post -> {
+        UserInfo userInfoCompletableFuture = userInfoCF.thenCombine(userPostsCF, (userInfo, userPosts) ->
+                new UserInfo(userInfo.getId(), userInfo, userPosts))
+                .thenCombine(userTodosCF,(prev,next)->new UserInfo(prev.getId(),prev,prev.getPosts(),next))
+                .join();
+        userInfoCompletableFuture.getPosts().forEach(post -> {
             try {
-                List<Comment> commentList = CompletableFuture.supplyAsync(() -> commentsOnPost(post.getId())).get();
-                post.setComments(commentList);
+                CompletableFuture<List<Comment>> commentList = CompletableFuture.supplyAsync(() -> commentsOnPost(post.getId()));
+                post.setComments(commentList.get());
             } catch (InterruptedException | ExecutionException e) {
                 e.printStackTrace();
             }
         });
+        return userInfoCompletableFuture;
+    }
 
+    @Override
+    public List<Todo> todosByUser(String userId) {
+        String todoUrl = API_LOCAL.concat("/users/").concat(userId).concat("/todos/");
+        LoggerUtil.log("calling URL : " + todoUrl);
+        return todoByUserFromApi(todoUrl);
+    }
 
-        userInfo.setPosts(userPosts);
-        return userInfo;
+    private List<Todo> todoByUserFromApi(String url) {
+        delay(3000);
+        return webClient
+                .get()
+                .uri(url)
+                .retrieve()
+                .bodyToFlux(Todo.class)
+                .collectList()
+                .block();
+
     }
 
 }

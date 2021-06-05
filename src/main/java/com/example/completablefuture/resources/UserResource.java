@@ -2,6 +2,7 @@ package com.example.completablefuture.resources;
 
 import com.example.completablefuture.dto.Comment;
 import com.example.completablefuture.dto.Post;
+import com.example.completablefuture.dto.Todo;
 import com.example.completablefuture.dto.UserInfo;
 import com.example.completablefuture.service.UserService;
 import com.example.completablefuture.util.LoggerUtil;
@@ -20,7 +21,6 @@ import static com.example.completablefuture.util.CommonUtil.*;
 @RestController
 public class UserResource {
 
-    //private ThreadLocal<StringBuffer> API_URL = new ThreadLocal<>()new String("https://jsonplaceholder.typicode.com/");
 
     @Autowired
     private UserService userService;
@@ -36,7 +36,7 @@ public class UserResource {
 
     @GetMapping("/posts/{userId}")
     public ResponseEntity<List<Post>> postByUser(@PathVariable("userId") String userId) {
-        List<Post> result = userService.postByUserFromApi(userId);
+        List<Post> result = userService.postByUser(userId);
         startTimer();
         ResponseEntity<List<Post>> responseEntity =
                 new ResponseEntity(result, HttpStatus.OK);
@@ -45,9 +45,20 @@ public class UserResource {
         return responseEntity;
     }
 
+    @GetMapping("/todos/{userId}")
+    public ResponseEntity<List<Todo>> todosByUser(@PathVariable("userId") String userId) {
+        List<Todo> result = userService.todosByUser(userId);
+        startTimer();
+        ResponseEntity<List<Todo>> responseEntity =
+                new ResponseEntity(result, HttpStatus.OK);
+        timeTaken();
+        stopWatchReset();
+        return responseEntity;
+    }
+
     @GetMapping("/comments/{userId}")
     public ResponseEntity<List<Comment>> commentsByUser(@PathVariable("userId") String userId) {
-        List<Comment> result = userService.commentsByUserFromApi(userId);
+        List<Comment> result = userService.commentsByUser(userId);
         startTimer();
         ResponseEntity<List<Comment>> responseEntity =
                 new ResponseEntity(result, HttpStatus.OK);
@@ -56,30 +67,15 @@ public class UserResource {
         return responseEntity;
     }
 
-
     @GetMapping("/users/allData/{userId}")
     public UserInfo allUserInfo(@PathVariable("userId") String userId) {
 
-        UserInfo userInfoT = null;
         UserInfo userInfo = null;
-        try {
             startTimer();
             LoggerUtil.log("Sada call....");
             userInfo = userService.prepapreUserInfo(userId);
             timeTaken();
-            stopWatchReset();
-            startTimer();
-            userInfoT = userService.prepareUserInfoUsingCompletableFuture(userId);
-            LoggerUtil.log("Threaded call....");
-            timeTaken();
-            stopWatchReset();
-        } catch (ExecutionException e) {
-            e.printStackTrace();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-
-        return userInfoT;
+            stopWatchReset();return userInfo;
     }
 
     @GetMapping("/users/allDataT/{userId}")
@@ -98,6 +94,4 @@ public class UserResource {
         }
         return userInfoT;
     }
-
-
 }
